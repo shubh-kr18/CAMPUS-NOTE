@@ -1,0 +1,7 @@
+node_modules/
+.env
+dist/
+uploads/
+storage/
+# Local AI/RAG test documents
+*.ai-document-upload-test.pdf

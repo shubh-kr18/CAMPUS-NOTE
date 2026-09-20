@@ -1,0 +1,8 @@
+import Attendance from '../models/Attendance.js'; import Schedule from '../models/Schedule.js'; import Club from '../models/Club.js'
+const fallbackAttendance=[{subject:'Mathematics',percentage:82,attendedClasses:23,totalClasses:28},{subject:'Digital Electronics',percentage:76,attendedClasses:19,totalClasses:25},{subject:'Programming',percentage:91,attendedClasses:30,totalClasses:33}]
+const fallbackSchedule=[{subject:'Digital Electronics',day:'Wednesday',startTime:'09:00',endTime:'10:00',room:'A-204'},{subject:'Mathematics',day:'Wednesday',startTime:'10:00',endTime:'11:00',room:'A-204'},{subject:'Programming',day:'Wednesday',startTime:'11:00',endTime:'12:00',room:'Lab 2'}]
+const fallbackClubs=['Coding Club','AI/ML Club','Robotics Club','Entrepreneurship Club','Cultural Club','Sports Club'].map((name,i)=>({name,category:['Technology','Technology','Engineering','Community','Culture','Sports'][i],description:`A welcoming IIIT Bhopal community for students interested in ${name.replace(' Club','')}.`,contact:'clubs@iiitbhopal.ac.in'}))
+export async function attendance(req,res,next){try{const data=await Attendance.find({student:req.userId});res.json({attendance:data.length?data:fallbackAttendance})}catch(e){next(e)}}
+export async function schedule(req,res,next){try{const data=await Schedule.find();res.json({schedule:data.length?data:fallbackSchedule})}catch(e){next(e)}}
+export async function clubs(req,res,next){try{const data=await Club.find();res.json({clubs:data.length?data:fallbackClubs})}catch(e){next(e)}}
+export async function club(req,res,next){try{const found=await Club.findById(req.params.id);if(!found)return res.status(404).json({message:'Club not found.'});res.json({club:found})}catch(e){next(e)}}

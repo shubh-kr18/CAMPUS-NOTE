@@ -1,0 +1,6 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+@layer base { body { @apply m-0 bg-[#f8f8f6] font-sans text-slate-900 antialiased; } button,input,select,textarea { font: inherit; } }
+@layer components { .dash-card { @apply rounded-2xl border border-white/10 bg-panel p-5 shadow-sm; } .field { @apply mt-1 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 outline-none transition focus:border-lime-500 focus:ring-4 focus:ring-lime-100; } .btn-primary { @apply inline-flex items-center justify-center rounded-xl bg-lime-400 px-4 py-2.5 font-semibold text-slate-900 transition hover:bg-lime-300 disabled:cursor-not-allowed disabled:opacity-60; } }
+@media (min-width: 1024px) { .lg\:w-20 { width: 5rem; } .lg\:w-64 { width: 16rem; } .lg\:ml-20 { margin-left: 5rem; } .lg\:ml-64 { margin-left: 16rem; } }
