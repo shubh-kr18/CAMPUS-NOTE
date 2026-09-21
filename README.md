@@ -1,4 +1,4 @@
-# Campus Notes — IIIT Bhopal
+# Campus Note — IIIT Bhopal
 
 A full-stack student platform for subject notes, attendance, schedules, clubs, and a future-ready AI chat interface.
 
