@@ -1,6 +1,8 @@
 import mongoose from 'mongoose'
 import AiChunk from '../models/AiChunk.js'
 import { generateQuestionEmbedding } from './embeddingService.js'
+import { getDocumentEmbeddingMetadata, verifyEmbeddingCompatibility } from './embeddingMetadataService.js'
+import { getEmbeddingProvider } from './providers/index.js'
 
 export const DEFAULT_TOP_K = 5
 
@@ -37,7 +39,7 @@ export function cosineSimilarity(vecA, vecB) {
  * @param {number} [params.topK=5] - Number of top chunks to return.
  * @returns {Promise<Array<{ documentId: string, chunkIndex: number, text: string, pageNumber: number, score: number }>>}
  */
-export async function searchSimilarChunks({ documentId, question, topK = DEFAULT_TOP_K }) {
+export async function searchSimilarChunks({ documentId, question, topK = DEFAULT_TOP_K, documentName }) {
   if (!documentId) {
     throw new Error('documentId is required for vector search.')
   }
@@ -50,7 +52,19 @@ export async function searchSimilarChunks({ documentId, question, topK = DEFAULT
     ? new mongoose.Types.ObjectId(documentId)
     : documentId
 
-  // 1. Generate embedding vector for the question using the same Ollama nomic-embed-text model
+  // Check document's embedding metadata and ensure compatibility with active query embedding provider
+  const queryEmbeddingProvider = getEmbeddingProvider()
+  const docMetadata = await getDocumentEmbeddingMetadata(docObjectId)
+
+  if (docMetadata) {
+    verifyEmbeddingCompatibility({
+      docMetadata,
+      queryProvider: queryEmbeddingProvider,
+      documentName: documentName || 'Selected document'
+    })
+  }
+
+  // 1. Generate embedding vector for the question using active embedding provider
   const questionEmbedding = await generateQuestionEmbedding(question)
 
   // 2. Try MongoDB Atlas Vector Search ($vectorSearch) with strict documentId filter
@@ -104,9 +118,9 @@ export async function searchSimilarChunks({ documentId, question, topK = DEFAULT
     return []
   }
 
-  // Calculate similarity score for each chunk with valid embedding vector
+  // Calculate similarity score for each chunk with valid embedding vector matching dimension
   const scoredChunks = chunks
-    .filter(chunk => Array.isArray(chunk.embedding) && chunk.embedding.length > 0)
+    .filter(chunk => Array.isArray(chunk.embedding) && chunk.embedding.length === questionEmbedding.length)
     .map(chunk => ({
       documentId: chunk.documentId.toString(),
       chunkIndex: chunk.chunkIndex,

@@ -1,10 +1,12 @@
 import fs from 'fs/promises'
+import Note from '../models/Note.js'
 import AiDocument from '../models/AiDocument.js'
 import AiPage from '../models/AiPage.js'
 import AiChunk from '../models/AiChunk.js'
 import { extractPagesFromPdf } from './pdfService.js'
 import { chunkPages } from './chunkingService.js'
 import { generateEmbeddings } from './embeddingService.js'
+import { getEmbeddingProvider } from './providers/index.js'
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -139,26 +141,55 @@ export async function indexPdfFileForDocument({ documentId, filePath }) {
   // Get stored chunks and generate embeddings
   const storedChunks = await AiChunk.find({ documentId }).sort('chunkIndex')
   let embeddingsGeneratedCount = 0
+  const embeddingProvider = getEmbeddingProvider()
+  const providerName = embeddingProvider.name
+  const modelName = embeddingProvider.model
+  const dimensions = embeddingProvider.dimensions
 
   if (storedChunks.length > 0) {
     const textsToEmbed = storedChunks.map(c => c.text)
     const embeddings = await generateEmbeddings(textsToEmbed)
     embeddingsGeneratedCount = embeddings.length
 
-    // Save embeddings back to chunks without duplicate records
+    // Save embeddings and provider metadata back to chunks
     const bulkOps = storedChunks.map((chunk, index) => ({
       updateOne: {
         filter: { _id: chunk._id },
-        update: { $set: { embedding: embeddings[index] } }
+        update: {
+          $set: {
+            embedding: embeddings[index],
+            embeddingProvider: providerName,
+            embeddingModel: modelName,
+            dimensions: embeddings[index]?.length || dimensions
+          }
+        }
       }
     }))
 
     if (bulkOps.length > 0) {
       await AiChunk.bulkWrite(bulkOps)
     }
+
+    // Save embedding metadata on AiDocument and Note
+    await Promise.all([
+      AiDocument.findByIdAndUpdate(documentId, {
+        $set: {
+          embeddingProvider: providerName,
+          embeddingModel: modelName,
+          embeddingDimensions: dimensions
+        }
+      }),
+      Note.findByIdAndUpdate(documentId, {
+        $set: {
+          embeddingProvider: providerName,
+          embeddingModel: modelName,
+          embeddingDimensions: dimensions
+        }
+      })
+    ]).catch(() => {})
   }
 
-  console.log(`Chunks: ${storedChunks.length}\nEmbeddings generated: ${embeddingsGeneratedCount}`)
+  console.log(`Chunks: ${storedChunks.length}\nEmbeddings generated: ${embeddingsGeneratedCount} (${providerName}/${modelName})`)
 
   return {
     pageCount: pages.length,

@@ -15,7 +15,12 @@ const aiDocumentSchema = new mongoose.Schema({
   status:          { type: String, enum: ['processing', 'ready', 'failed'], default: 'processing' },
   pageCount:       { type: Number },          // total pages successfully extracted
   chunkCount:      { type: Number },          // total chunks created
-  extractionError: { type: String }           // populated only when status === 'failed'
+  extractionError: { type: String },          // populated only when status === 'failed'
+
+  // Embedding metadata
+  embeddingProvider:   { type: String, default: 'ollama' },
+  embeddingModel:      { type: String, default: 'nomic-embed-text' },
+  embeddingDimensions: { type: Number, default: 768 }
 }, { timestamps: true })
 
 export default mongoose.model('AiDocument', aiDocumentSchema)

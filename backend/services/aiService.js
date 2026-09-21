@@ -4,11 +4,10 @@ import Note from '../models/Note.js'
 import AiDocument from '../models/AiDocument.js'
 import AiChunk from '../models/AiChunk.js'
 import { getOllamaConfig, isOllamaConnectionError, createOllamaConnectionError } from '../config/env.js'
+import { getLlmProvider, getEmbeddingProvider } from './providers/index.js'
 import { indexPdfFileForDocument } from './aiDocumentService.js'
 import { generateEmbeddings } from './embeddingService.js'
 import { searchSimilarChunks } from './vectorSearchService.js'
-
-const DEFAULT_CHAT_MODEL = 'llama3.2'
 
 /**
  * Ensures that document chunks exist in DB and have valid embedding vectors.
@@ -49,10 +48,19 @@ export async function ensureDocumentEmbedded({ documentId, fileUrl }) {
     if (missingChunks.length > 0) {
       const textsToEmbed = missingChunks.map(c => c.text)
       const embeddings = await generateEmbeddings(textsToEmbed)
+      const provider = getEmbeddingProvider()
+
       const bulkOps = missingChunks.map((chunk, index) => ({
         updateOne: {
           filter: { _id: chunk._id },
-          update: { $set: { embedding: embeddings[index] } }
+          update: {
+            $set: {
+              embedding: embeddings[index],
+              embeddingProvider: provider.name,
+              embeddingModel: provider.model,
+              dimensions: embeddings[index]?.length || provider.dimensions
+            }
+          }
         }
       }))
       if (bulkOps.length > 0) {
@@ -159,7 +167,8 @@ export async function answerQuestionWithRag({ documentId, question, subjectId: r
   const chunks = await searchSimilarChunks({
     documentId: docObjectId,
     question: question.trim(),
-    topK
+    topK,
+    documentName
   })
 
   console.log('[RAG DEBUG Stage 3] Vector search result count:', chunks?.length || 0)
@@ -222,48 +231,18 @@ ${contextText}
 
 Student Question: ${question.trim()}`
 
-  // 6. Call local Ollama LLM
-  const { baseUrl, model: configuredModel } = getOllamaConfig()
-  const chatModel = configuredModel || DEFAULT_CHAT_MODEL
+  // 6. Call active LLM Provider
+  const llmProvider = getLlmProvider()
 
-  console.log('[RAG DEBUG Stage 5] Sending Ollama LLM request. Model:', chatModel, 'Context passages count:', chunks.length, 'Unique source pages:', sources.map(s => s.pageNumber))
-  
-  let ollamaRes
-  try {
-    ollamaRes = await fetch(`${baseUrl}/api/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: chatModel,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
-        stream: false,
-        options: {
-          temperature: 0.0
-        }
-      })
-    })
-  } catch (fetchError) {
-    if (isOllamaConnectionError(fetchError)) {
-      throw createOllamaConnectionError(fetchError)
-    }
-    throw fetchError
-  }
+  console.log('[RAG DEBUG Stage 5] Sending LLM request via provider:', llmProvider.name, 'Context passages count:', chunks.length, 'Unique source pages:', sources.map(s => s.pageNumber))
 
-  if (!ollamaRes.ok) {
-    const errText = await ollamaRes.text().catch(() => '')
-    const error = new Error(`Ollama chat error (${ollamaRes.status}): ${errText || ollamaRes.statusText}`)
-    error.status = ollamaRes.status
-    if (isOllamaConnectionError(error)) {
-      throw createOllamaConnectionError(error)
-    }
-    throw error
-  }
+  const rawAnswer = await llmProvider.generateChatCompletion({
+    systemPrompt,
+    userPrompt,
+    temperature: 0.0
+  })
 
-  const ollamaData = await ollamaRes.json()
-  let answer = ollamaData.message?.content?.trim() || 'The information was not found in the selected document.'
+  let answer = rawAnswer?.trim() || 'The information was not found in the selected document.'
   if (!answer) {
     answer = 'The information was not found in the selected document.'
   }

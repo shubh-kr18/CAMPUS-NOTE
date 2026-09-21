@@ -1,6 +1,7 @@
 import '../config/env.js'
 import { getOllamaConfig, isOllamaConnectionError, OLLAMA_NOT_RUNNING_MESSAGE } from '../config/env.js'
 import { answerQuestionWithRag } from '../services/aiService.js'
+import { getLlmProvider, getEmbeddingProvider } from '../services/providers/index.js'
 
 /**
  * Handles RAG chat requests for uploaded PDF documents.
@@ -57,7 +58,7 @@ export async function chat(req, res, next) {
     }
 
     // Never expose stack traces or internal errors to the frontend
-    if (error.status && error.status >= 400 && error.status < 500) {
+    if (error.status && ((error.status >= 400 && error.status < 500) || error.status === 503)) {
       return res.status(error.status).json({ message: error.message })
     }
 
@@ -66,30 +67,29 @@ export async function chat(req, res, next) {
     })
   }
 }
+
 /**
- * Health check endpoint for local Ollama configuration.
+ * Health check endpoint for active AI provider configuration.
  * Route: GET /api/ai/status
  */
 export async function checkAiStatus(req, res) {
-  const { baseUrl, model, embeddingModel } = getOllamaConfig()
-  let ollamaReady = false
-
   try {
-    const checkRes = await fetch(`${baseUrl}/api/tags`, { signal: AbortSignal.timeout(3000) })
-    if (checkRes.ok) {
-      const data = await checkRes.json()
-      const models = (data.models || []).map(m => m.name)
-      ollamaReady = models.some(m => m.includes(model)) && models.some(m => m.includes(embeddingModel))
-    }
-  } catch {
-    ollamaReady = false
-  }
+    const llmProvider = getLlmProvider()
+    const embeddingProvider = getEmbeddingProvider()
+    const llmStatus = await llmProvider.checkStatus()
+    const embeddingStatus = await embeddingProvider.checkStatus()
 
-  res.json({
-    ollamaReady,
-    provider: 'ollama',
-    baseUrl,
-    chatModel: model,
-    embeddingModel
-  })
+    res.json({
+      ...llmStatus,
+      embeddingProvider: embeddingProvider.name,
+      embeddingModel: embeddingProvider.model,
+      embeddingDimensions: embeddingProvider.dimensions,
+      embeddingReady: embeddingStatus.isReady
+    })
+  } catch (error) {
+    res.status(500).json({
+      isReady: false,
+      error: error.message
+    })
+  }
 }

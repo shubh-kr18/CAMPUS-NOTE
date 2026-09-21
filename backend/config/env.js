@@ -20,6 +20,30 @@ export const getOllamaConfig = () => ({
   embeddingModel: process.env.OLLAMA_EMBEDDING_MODEL || 'nomic-embed-text'
 })
 
+export const getOpenAiConfig = () => ({
+  apiKey: process.env.OPENAI_API_KEY || '',
+  model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+  embeddingModel: process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small'
+})
+
+export const getAiProviderConfig = () => {
+  const provider = (process.env.AI_PROVIDER || 'ollama').toLowerCase().trim()
+  return {
+    provider,
+    ollama: getOllamaConfig(),
+    openai: getOpenAiConfig()
+  }
+}
+
+export const getEmbeddingProviderConfig = () => {
+  const provider = (process.env.EMBEDDING_PROVIDER || process.env.AI_PROVIDER || 'ollama').toLowerCase().trim()
+  return {
+    provider,
+    ollama: getOllamaConfig(),
+    openai: getOpenAiConfig()
+  }
+}
+
 export const OLLAMA_NOT_RUNNING_MESSAGE = 'Ollama is not running. Start Ollama and try again.'
 
 /**

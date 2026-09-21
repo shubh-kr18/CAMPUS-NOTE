@@ -29,8 +29,21 @@ const aiChunkSchema = new mongoose.Schema({
     default: 0
   },
   embedding: {
-    type: [Number], // 768-dimensional vector from Ollama nomic-embed-text
+    type: [Number], // vector embeddings
     default: undefined
+  },
+  embeddingProvider: {
+    type: String,
+    default: 'ollama',
+    index: true
+  },
+  embeddingModel: {
+    type: String,
+    default: 'nomic-embed-text'
+  },
+  dimensions: {
+    type: Number,
+    default: 768
   }
 }, { timestamps: false })
 
