@@ -213,7 +213,7 @@ export async function answerQuestionWithRag({ documentId, question, subjectId: r
   const contextText = contextParts.join('\n\n')
 
   // 5. System instructions and user prompt
-  const systemPrompt = `You are Campus Notes AI, an academic assistant for university students.
+  const systemPrompt = `You are Campus Note AI, an academic assistant for university students.
 Your task is to answer the student's question strictly and exclusively based on the provided context extracted from the selected document "${documentName}".
 
 Strict Rules:

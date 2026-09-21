@@ -105,7 +105,7 @@ export function AIChat() {
     <div className="flex min-h-[calc(100vh-9rem)] flex-col">
       <header>
         <p className="text-sm font-semibold text-lime-300">STUDY COMPANION</p>
-        <h1 className="mt-2 text-3xl font-semibold">Campus Notes AI</h1>
+        <h1 className="mt-2 text-3xl font-semibold">Campus Note AI</h1>
         <p className="mt-2 text-slate-400">Select your Subject, choose a course Document, and ask questions with verified PDF citations.</p>
       </header>
 
@@ -238,7 +238,7 @@ export function AIChat() {
                       <Bot size={17} />
                     </div>
                     <div className="rounded-2xl bg-white/10 p-4 text-sm text-slate-200 border border-white/5 shadow-sm">
-                      <p className="font-semibold text-lime-300 mb-1.5 text-xs uppercase tracking-wider">Campus Notes AI</p>
+                      <p className="font-semibold text-lime-300 mb-1.5 text-xs uppercase tracking-wider">Campus Note AI</p>
                       <div className="whitespace-pre-wrap leading-relaxed">{message.text}</div>
                       {message.sources && message.sources.length > 0 && (
                         <div className="mt-4 border-t border-white/10 pt-3">
