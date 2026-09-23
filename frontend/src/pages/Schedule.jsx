@@ -185,13 +185,14 @@ export default function Schedule() {
   const [actionSuccess, setActionSuccess] = useState('')
   const [actionError, setActionError] = useState('')
 
-  // Selected date (Defaults to July 16, 2026 or today)
+  // Selected date (Defaults to today if within teaching period 06 July - 23 October 2026, else July 16, 2026)
   const [selectedDate, setSelectedDate] = useState(() => {
     const now = new Date()
-    if (now.getFullYear() === 2026 && now.getMonth() >= 6 && now.getMonth() <= 11) {
+    const nowIso = formatIsoDate(now)
+    if (nowIso >= RECURRING_CLASSES_START_ISO && nowIso <= RECURRING_CLASSES_END_ISO) {
       return now
     }
-    return new Date(2026, 6, 16)
+    return new Date(2026, 6, 16, 12, 0, 0)
   })
 
   // Management Modal Visibility States
@@ -246,7 +247,7 @@ export default function Schedule() {
   const fetchScheduleData = useCallback(async () => {
     setLoading(true)
     setFetchError(null)
-    const branch = (user.branch && (user.branch === 'ECE' || user.branch.includes('Electronics'))) ? 'ECE' : (user.branch || 'ECE')
+    const branch = 'ECE'
     const semester = 5 // Default semester V for this cohort
 
     try {
@@ -546,7 +547,10 @@ export default function Schedule() {
   // ============================================================
   const formattedSelectedIso = useMemo(() => formatIsoDate(selectedDate), [selectedDate])
 
-  const dayName = useMemo(() => DAYS_ORDER[selectedDate.getDay()], [selectedDate])
+  const dayName = useMemo(() => {
+    const [y, m, d] = formattedSelectedIso.split('-').map(Number)
+    return DAYS_ORDER[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]
+  }, [formattedSelectedIso])
 
   const friendlyDateString = useMemo(() => {
     return selectedDate.toLocaleDateString('en-US', {
@@ -567,44 +571,43 @@ export default function Schedule() {
   }, [selectedDate])
 
   const isWeekend = useMemo(() => {
-    const d = selectedDate.getDay()
-    return d === 0 || d === 6
-  }, [selectedDate])
+    const [y, m, d] = formattedSelectedIso.split('-').map(Number)
+    const dDay = new Date(Date.UTC(y, m - 1, d)).getUTCDay()
+    return dDay === 0 || dDay === 6
+  }, [formattedSelectedIso])
 
   // Monday–Friday days of the currently selected week
   const weekDays = useMemo(() => {
-    const currentDay = selectedDate.getDay()
+    const [selY, selM, selD] = formattedSelectedIso.split('-').map(Number)
+    const currentDay = new Date(Date.UTC(selY, selM - 1, selD)).getUTCDay()
     const diffToMonday = currentDay === 0 ? -6 : 1 - currentDay
 
-    const monday = new Date(selectedDate)
-    monday.setDate(selectedDate.getDate() + diffToMonday)
-    monday.setHours(0, 0, 0, 0)
+    const monday = new Date(Date.UTC(selY, selM - 1, selD + diffToMonday))
 
     const days = []
     const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
 
     for (let i = 0; i < 5; i++) {
-      const d = new Date(monday)
-      d.setDate(monday.getDate() + i)
-      const iso = formatIsoDate(d)
-      const today = new Date()
+      const d = new Date(Date.UTC(monday.getUTCFullYear(), monday.getUTCMonth(), monday.getUTCDate() + i))
+      const year = d.getUTCFullYear()
+      const month = String(d.getUTCMonth() + 1).padStart(2, '0')
+      const day = String(d.getUTCDate()).padStart(2, '0')
+      const iso = `${year}-${month}-${day}`
+      const todayIso = formatIsoDate(new Date())
 
       days.push({
-        date: d,
+        date: new Date(year, d.getUTCMonth(), d.getUTCDate(), 12, 0, 0),
         iso,
-        dayName: DAYS_ORDER[d.getDay()],
+        dayName: DAYS_ORDER[d.getUTCDay()],
         label: dayLabels[i],
-        dayNumber: d.getDate(),
-        monthShort: d.toLocaleDateString('en-US', { month: 'short' }),
-        isToday:
-          d.getDate() === today.getDate() &&
-          d.getMonth() === today.getMonth() &&
-          d.getFullYear() === today.getFullYear(),
+        dayNumber: d.getUTCDate(),
+        monthShort: d.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' }),
+        isToday: iso === todayIso,
         isSelected: iso === formattedSelectedIso
       })
     }
     return days
-  }, [selectedDate, formattedSelectedIso])
+  }, [formattedSelectedIso])
 
   const handlePrevDay = () => {
     const next = new Date(selectedDate)
@@ -627,22 +630,26 @@ export default function Schedule() {
   }
 
   const handleToday = () => {
-    setSelectedDate(new Date())
+    const now = new Date()
+    const nowIso = formatIsoDate(now)
+    if (nowIso >= RECURRING_CLASSES_START_ISO && nowIso <= RECURRING_CLASSES_END_ISO) {
+      setSelectedDate(now)
+    } else {
+      setSelectedDate(new Date(2026, 6, 16, 12, 0, 0))
+    }
   }
 
   const handleNextMonday = () => {
-    const nextMon = new Date(selectedDate)
-    const currentDay = nextMon.getDay()
+    const [y, m, d] = formattedSelectedIso.split('-').map(Number)
+    const currentDay = new Date(Date.UTC(y, m - 1, d)).getUTCDay()
     const daysUntilMonday = currentDay === 0 ? 1 : 8 - currentDay
-    nextMon.setDate(nextMon.getDate() + daysUntilMonday)
-    nextMon.setHours(0, 0, 0, 0)
-    setSelectedDate(nextMon)
+    setSelectedDate(new Date(y, m - 1, d + daysUntilMonday, 12, 0, 0))
   }
 
   const handleDateChange = (e) => {
     if (!e.target.value) return
     const [y, m, d] = e.target.value.split('-').map(Number)
-    setSelectedDate(new Date(y, m - 1, d))
+    setSelectedDate(new Date(y, m - 1, d, 12, 0, 0))
   }
 
   // Check if selected date falls within Odd Semester 2026 teaching period (06 July 2026 to 23 October 2026)
@@ -666,7 +673,13 @@ export default function Schedule() {
   // Class-affecting override (holiday/exam/break) for this date
   const classAffectingOverride = useMemo(() => {
     return overrides.find((o) => {
-      if (!o.affectsClasses) return false
+      if (!o.affectsClasses || o.affectsClasses === 'false') return false
+      // Only match overrides applicable to this cohort
+      if (o.branch && o.branch !== 'All' && o.branch !== 'ECE') return false
+      if (o.semester && o.semester !== 5) return false
+      // Single class-level override does not suspend the full day
+      if (o.classId) return false
+
       const startDate = (o.startDate || o.date || '').split('T')[0]
       const endDate = (o.endDate || o.startDate || o.date || '').split('T')[0]
       return Boolean(startDate) && formattedSelectedIso >= startDate && formattedSelectedIso <= endDate
@@ -703,12 +716,25 @@ export default function Schedule() {
 
   // Filtered recurring classes for this weekday:
   // Shown ONLY from 06 July 2026 to 23 October 2026, and suppressed if a class-affecting override occurs.
+  // Academic reminders NEVER suppress recurring classes.
   const effectiveDayClasses = useMemo(() => {
     if (!isWithinTeachingPeriod || classAffectingOverride) return []
 
     const forDay = recurringClasses.filter((c) => c.day === dayName)
 
-    const forBatch = forDay.filter((c) => {
+    // Filter out any individual class that has a targeted class-level override
+    const uncancelledClasses = forDay.filter((c) => {
+      const isClassCancelled = overrides.some((o) => {
+        if (!o.affectsClasses || o.affectsClasses === 'false') return false
+        if (!o.classId || String(o.classId) !== String(c._id)) return false
+        const startDate = (o.startDate || o.date || '').split('T')[0]
+        const endDate = (o.endDate || o.startDate || o.date || '').split('T')[0]
+        return Boolean(startDate) && formattedSelectedIso >= startDate && formattedSelectedIso <= endDate
+      })
+      return !isClassCancelled
+    })
+
+    const forBatch = uncancelledClasses.filter((c) => {
       if (selectedBatch === 'All') return true
       if (!c.batch || c.batch === 'All') return true
       return c.batch === selectedBatch
@@ -719,7 +745,7 @@ export default function Schedule() {
       if (startDiff !== 0) return startDiff
       return (a.batch || '').localeCompare(b.batch || '')
     })
-  }, [recurringClasses, dayName, isWithinTeachingPeriod, classAffectingOverride, selectedBatch])
+  }, [recurringClasses, dayName, isWithinTeachingPeriod, classAffectingOverride, selectedBatch, overrides, formattedSelectedIso])
 
   // Daily Timeline Items with Recess Breaks
   const timelineItems = useMemo(() => {
@@ -783,12 +809,17 @@ export default function Schedule() {
     return weekDays.map((dayItem) => {
       const dayIso = dayItem.iso
       const dayClassAffectingOverride = overrides.find((o) => {
-        if (!o.affectsClasses) return false
+        if (!o.affectsClasses || o.affectsClasses === 'false') return false
+        if (o.branch && o.branch !== 'All' && o.branch !== 'ECE') return false
+        if (o.semester && o.semester !== 5) return false
+        if (o.classId) return false
+
         const startDate = (o.startDate || o.date || '').split('T')[0]
         const endDate = (o.endDate || o.startDate || o.date || '').split('T')[0]
         return Boolean(startDate) && dayIso >= startDate && dayIso <= endDate
       })
 
+      // Academic reminders NEVER suppress recurring classes
       const dayReminders = reminders.filter((r) => {
         const start = (r.startDate || r.date || '').split('T')[0]
         const end = (r.endDate || r.startDate || r.date || '').split('T')[0]
@@ -800,7 +831,20 @@ export default function Schedule() {
       let effectiveClasses = []
       if (dayIsWithinTeaching && !dayClassAffectingOverride) {
         const dayClasses = recurringClasses.filter((c) => c.day === dayItem.dayName)
-        const batchFiltered = dayClasses.filter((c) => {
+
+        // Filter out any individual class that has a targeted class-level override
+        const uncancelledDayClasses = dayClasses.filter((c) => {
+          const isClassCancelled = overrides.some((o) => {
+            if (!o.affectsClasses || o.affectsClasses === 'false') return false
+            if (!o.classId || String(o.classId) !== String(c._id)) return false
+            const startDate = (o.startDate || o.date || '').split('T')[0]
+            const endDate = (o.endDate || o.startDate || o.date || '').split('T')[0]
+            return Boolean(startDate) && dayIso >= startDate && dayIso <= endDate
+          })
+          return !isClassCancelled
+        })
+
+        const batchFiltered = uncancelledDayClasses.filter((c) => {
           if (selectedBatch === 'All') return true
           if (!c.batch || c.batch === 'All') return true
           return c.batch === selectedBatch

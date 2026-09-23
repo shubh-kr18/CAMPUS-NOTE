@@ -51,9 +51,18 @@ export async function listClasses(req, res, next) {
       filter.code = new RegExp(req.query.code.trim(), 'i')
     }
 
-    const data = await RecurringClass.find(filter)
+    let data = await RecurringClass.find(filter)
       .populate('createdBy', 'name email role')
       .sort({ day: 1, startTime: 1 })
+
+    // If requested branch has no classes, fall back to available cohort classes in MongoDB
+    if (!data.length && filter.branch) {
+      const fallbackFilter = { ...filter }
+      delete fallbackFilter.branch
+      data = await RecurringClass.find(fallbackFilter)
+        .populate('createdBy', 'name email role')
+        .sort({ day: 1, startTime: 1 })
+    }
 
     res.json({
       schedule: data.length ? data : fallbackSchedule,
