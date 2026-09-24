@@ -7,9 +7,9 @@ const noteSchema = new mongoose.Schema({
   originalName: String,
   fileSize: { type: Number, required: true },
   uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  embeddingProvider: { type: String, default: 'ollama' },
-  embeddingModel: { type: String, default: 'nomic-embed-text' },
-  embeddingDimensions: { type: Number, default: 768 }
+  embeddingProvider: { type: String },
+  embeddingModel: { type: String },
+  embeddingDimensions: { type: Number }
 }, { timestamps: true })
 noteSchema.index({ title: 1, subject: 1 }, { unique: true })
 export default mongoose.model('Note', noteSchema)

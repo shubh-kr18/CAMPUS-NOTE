@@ -2,6 +2,7 @@ import '../config/env.js'
 import { getOllamaConfig, isOllamaConnectionError, OLLAMA_NOT_RUNNING_MESSAGE } from '../config/env.js'
 import { answerQuestionWithRag } from '../services/aiService.js'
 import { getLlmProvider, getEmbeddingProvider } from '../services/providers/index.js'
+import { reindexAiDocument } from '../services/aiDocumentService.js'
 
 /**
  * Handles RAG chat requests for uploaded PDF documents.
@@ -22,6 +23,10 @@ export async function chat(req, res, next) {
 
     const topK = req.body.topK ? parseInt(req.body.topK, 10) : 5
     const subjectId = req.body.subjectId || req.body.subject
+
+    if (req.body.reindex) {
+      await reindexAiDocument(documentId)
+    }
 
     const result = await answerQuestionWithRag({
       documentId,

@@ -1,25 +1,27 @@
 import { getAiProviderConfig, getEmbeddingProviderConfig } from '../../config/env.js'
 import { BaseLlmProvider, BaseAiProvider } from './baseProvider.js'
 import { OllamaLlmProvider, OllamaProvider } from './ollamaProvider.js'
-import { OpenAiLlmProvider, OpenAiProvider } from './openaiProvider.js'
+import { GeminiLlmProvider, GeminiProvider } from '../geminiProvider.js'
 import { BaseEmbeddingProvider } from './baseEmbeddingProvider.js'
 import { OllamaEmbeddingProvider } from './ollamaEmbeddingProvider.js'
-import { OpenAiEmbeddingProvider } from './openaiEmbeddingProvider.js'
+import { GeminiEmbeddingProvider, GeminiEmbedding } from '../geminiEmbeddingProvider.js'
 
 // Singleton instances
 const llmInstances = {
   ollama: null,
-  openai: null
+  gemini: null
 }
 
 const embeddingInstances = {
   ollama: null,
-  openai: null
+  gemini: null
 }
 
 /**
  * Returns the active LLM Provider instance based on AI_PROVIDER environment variable
  * or optional override ('ollama' by default).
+ *
+ * Supported providers: 'ollama', 'gemini'
  *
  * @param {string} [providerName]
  * @returns {BaseLlmProvider}
@@ -34,24 +36,24 @@ export function getLlmProvider(providerName) {
       }
       return llmInstances.ollama
 
-    case 'openai':
-      if (!llmInstances.openai) {
-        llmInstances.openai = new OpenAiLlmProvider()
+    case 'gemini':
+      if (!llmInstances.gemini) {
+        llmInstances.gemini = new GeminiLlmProvider()
       }
-      return llmInstances.openai
+      return llmInstances.gemini
 
     default:
-      console.warn(`[LLM Provider] Unknown provider "${selectedProvider}", falling back to "ollama".`)
-      if (!llmInstances.ollama) {
-        llmInstances.ollama = new OllamaLlmProvider()
-      }
-      return llmInstances.ollama
+      throw new Error(
+        `Unsupported AI_PROVIDER: "${selectedProvider}". Supported LLM providers are: "ollama", "gemini".`
+      )
   }
 }
 
 /**
  * Returns the active Embedding Provider instance based on EMBEDDING_PROVIDER
  * or AI_PROVIDER environment variables ('ollama' by default).
+ *
+ * Supported providers: 'ollama', 'gemini'
  *
  * @param {string} [providerName]
  * @returns {BaseEmbeddingProvider}
@@ -66,18 +68,16 @@ export function getEmbeddingProvider(providerName) {
       }
       return embeddingInstances.ollama
 
-    case 'openai':
-      if (!embeddingInstances.openai) {
-        embeddingInstances.openai = new OpenAiEmbeddingProvider()
+    case 'gemini':
+      if (!embeddingInstances.gemini) {
+        embeddingInstances.gemini = new GeminiEmbeddingProvider()
       }
-      return embeddingInstances.openai
+      return embeddingInstances.gemini
 
     default:
-      console.warn(`[Embedding Provider] Unknown provider "${selectedProvider}", falling back to "ollama".`)
-      if (!embeddingInstances.ollama) {
-        embeddingInstances.ollama = new OllamaEmbeddingProvider()
-      }
-      return embeddingInstances.ollama
+      throw new Error(
+        `Unsupported EMBEDDING_PROVIDER: "${selectedProvider}". Supported embedding providers are: "ollama", "gemini".`
+      )
   }
 }
 
@@ -89,9 +89,10 @@ export {
   BaseAiProvider,
   OllamaLlmProvider,
   OllamaProvider,
-  OpenAiLlmProvider,
-  OpenAiProvider,
+  GeminiLlmProvider,
+  GeminiProvider,
   BaseEmbeddingProvider,
   OllamaEmbeddingProvider,
-  OpenAiEmbeddingProvider
+  GeminiEmbeddingProvider,
+  GeminiEmbedding
 }

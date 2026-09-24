@@ -56,13 +56,11 @@ export async function searchSimilarChunks({ documentId, question, topK = DEFAULT
   const queryEmbeddingProvider = getEmbeddingProvider()
   const docMetadata = await getDocumentEmbeddingMetadata(docObjectId)
 
-  if (docMetadata) {
-    verifyEmbeddingCompatibility({
-      docMetadata,
-      queryProvider: queryEmbeddingProvider,
-      documentName: documentName || 'Selected document'
-    })
-  }
+  verifyEmbeddingCompatibility({
+    docMetadata,
+    queryProvider: queryEmbeddingProvider,
+    documentName: documentName || 'Selected document'
+  })
 
   // 1. Generate embedding vector for the question using active embedding provider
   const questionEmbedding = await generateQuestionEmbedding(question)

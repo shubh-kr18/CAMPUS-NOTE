@@ -20,10 +20,10 @@ export const getOllamaConfig = () => ({
   embeddingModel: process.env.OLLAMA_EMBEDDING_MODEL || 'nomic-embed-text'
 })
 
-export const getOpenAiConfig = () => ({
-  apiKey: process.env.OPENAI_API_KEY || '',
-  model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-  embeddingModel: process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small'
+export const getGeminiConfig = () => ({
+  apiKey: process.env.GEMINI_API_KEY || '',
+  model: process.env.GEMINI_MODEL || 'gemini-3.7-flash',
+  embeddingModel: process.env.GEMINI_EMBEDDING_MODEL || 'gemini-embedding-2'
 })
 
 export const getAiProviderConfig = () => {
@@ -31,7 +31,7 @@ export const getAiProviderConfig = () => {
   return {
     provider,
     ollama: getOllamaConfig(),
-    openai: getOpenAiConfig()
+    gemini: getGeminiConfig()
   }
 }
 
@@ -40,7 +40,7 @@ export const getEmbeddingProviderConfig = () => {
   return {
     provider,
     ollama: getOllamaConfig(),
-    openai: getOpenAiConfig()
+    gemini: getGeminiConfig()
   }
 }
 

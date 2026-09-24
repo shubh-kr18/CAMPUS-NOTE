@@ -6,6 +6,10 @@ export class BaseEmbeddingProvider {
     this.name = name
   }
 
+  get provider() {
+    return this.name
+  }
+
   /**
    * Generates embedding vectors for an array of texts.
    *

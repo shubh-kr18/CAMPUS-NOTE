@@ -56,7 +56,7 @@ export async function ensureDocumentEmbedded({ documentId, fileUrl }) {
           update: {
             $set: {
               embedding: embeddings[index],
-              embeddingProvider: provider.name,
+              embeddingProvider: provider.provider || provider.name,
               embeddingModel: provider.model,
               dimensions: embeddings[index]?.length || provider.dimensions
             }

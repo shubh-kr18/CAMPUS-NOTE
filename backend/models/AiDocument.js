@@ -18,9 +18,9 @@ const aiDocumentSchema = new mongoose.Schema({
   extractionError: { type: String },          // populated only when status === 'failed'
 
   // Embedding metadata
-  embeddingProvider:   { type: String, default: 'ollama' },
-  embeddingModel:      { type: String, default: 'nomic-embed-text' },
-  embeddingDimensions: { type: Number, default: 768 }
+  embeddingProvider:   { type: String },
+  embeddingModel:      { type: String },
+  embeddingDimensions: { type: Number }
 }, { timestamps: true })
 
 export default mongoose.model('AiDocument', aiDocumentSchema)

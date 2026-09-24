@@ -53,7 +53,10 @@ export function AIChat() {
     return notes.filter(n => n.subject === selectedSubject)
   }, [notes, selectedSubject])
 
-  const selectedNote = subjectNotes.find(n => n._id === selectedDocId) || subjectNotes[0] || null
+  const selectedNote = useMemo(() => {
+    if (subjectNotes.length === 0) return null
+    return subjectNotes.find(n => n._id === selectedDocId) || subjectNotes[0] || null
+  }, [subjectNotes, selectedDocId])
 
   const selectedDocument = useMemo(() => {
     if (!selectedNote) return null
@@ -72,10 +75,17 @@ export function AIChat() {
     fetchNotes()
   }, [fetchNotes])
 
-  // Auto-sync initial selectedDocId ONLY if none was ever selected yet
+  // Validate and sync selectedDocId with available notes under the selected subject
   useEffect(() => {
-    if (!selectedDocId && subjectNotes.length > 0) {
-      initDocumentIfNone(subjectNotes[0]._id)
+    if (subjectNotes.length === 0) {
+      if (selectedDocId !== null) {
+        initDocumentIfNone(null)
+      }
+    } else {
+      const exists = subjectNotes.some(n => n._id === selectedDocId)
+      if (!exists) {
+        initDocumentIfNone(subjectNotes[0]._id)
+      }
     }
   }, [subjectNotes, selectedDocId, initDocumentIfNone])
 
@@ -86,19 +96,20 @@ export function AIChat() {
   const handleSubjectChange = e => {
     const newSubject = e.target.value
     const matchingNotes = notes.filter(n => n.subject === newSubject)
-    const fallbackDocId = matchingNotes[0]?._id || ''
+    const fallbackDocId = matchingNotes[0]?._id || null
     selectSubject(newSubject, fallbackDocId)
   }
 
   const handleDocumentChange = e => {
-    const newDocId = e.target.value
+    const newDocId = e.target.value || null
     selectDocument(newDocId)
   }
 
   const submitQuestion = async event => {
     event.preventDefault()
-    if (!selectedDocId || !question.trim() || loading) return
-    askQuestion(question, selectedDocument)
+    const activeDoc = selectedDocument
+    if (!activeDoc?.documentId || !question.trim() || loading) return
+    askQuestion(question, activeDoc)
   }
 
   return (
@@ -162,7 +173,7 @@ export function AIChat() {
               <div className="relative min-w-[15rem] max-w-sm">
                 <select
                   id="document-selector"
-                  value={selectedDocId}
+                  value={selectedDocId || ''}
                   onChange={handleDocumentChange}
                   disabled={subjectNotes.length === 0}
                   className="w-full appearance-none rounded-xl border border-white/15 bg-white/10 py-1.5 pl-3 pr-8 text-sm font-medium text-white outline-none focus:border-lime-300 focus:ring-1 focus:ring-lime-300 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"

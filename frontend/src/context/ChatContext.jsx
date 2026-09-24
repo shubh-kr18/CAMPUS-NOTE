@@ -27,10 +27,11 @@ export function ChatProvider({ children }) {
 
   const [notes, setNotes] = useState([])
   const [backendSubjects, setBackendSubjects] = useState([])
+  const [notesLoaded, setNotesLoaded] = useState(false)
   const [selectedSubject, setSelectedSubject] = useState(
     initial?.selectedSubject || studentSubjects[0] || 'DSP — Digital Signal Processing'
   )
-  const [selectedDocId, setSelectedDocId] = useState(initial?.selectedDocId || '')
+  const [selectedDocId, setSelectedDocId] = useState(initial?.selectedDocId || null)
   const [messages, setMessages] = useState(initial?.messages || [])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -62,7 +63,9 @@ export function ChatProvider({ children }) {
       const res = await api('/notes')
       if (res.notes) setNotes(res.notes)
       if (res.subjects) setBackendSubjects(res.subjects)
-    } catch {}
+    } catch {} finally {
+      setNotesLoaded(true)
+    }
   }, [])
 
   // Initial fetch of notes
@@ -70,44 +73,76 @@ export function ChatProvider({ children }) {
     fetchNotes()
   }, [fetchNotes])
 
+  // Validate that selectedDocId exists in the current subject's notes list when notes are loaded
+  useEffect(() => {
+    if (!notesLoaded) return
+
+    const subjectNotes = notes.filter(n => n.subject === selectedSubject)
+    if (subjectNotes.length === 0) {
+      if (selectedDocId !== null) {
+        setSelectedDocId(null)
+      }
+      return
+    }
+
+    const exists = subjectNotes.some(n => n._id === selectedDocId)
+    if (!exists) {
+      const validDocId = subjectNotes[0]._id
+      setSelectedDocId(validDocId)
+      // When replacing a stale or non-existent document ID, reset old messages
+      if (selectedDocId) {
+        setMessages([])
+        setError('')
+        setQuestion('')
+      }
+    }
+  }, [notes, selectedSubject, selectedDocId, notesLoaded])
+
   // Reset ONLY when a different PDF is explicitly selected
   const selectDocument = useCallback((newDocId) => {
     setSelectedDocId(prev => {
-      if (prev === newDocId) return prev
+      const cleanId = newDocId || null
+      if (prev === cleanId) return prev
       // On PDF change: clear old chat and start a new chat for the new document
       setMessages([])
       setError('')
       setQuestion('')
-      return newDocId
+      return cleanId
     })
   }, [])
 
   // Select a subject, and if docId changes as a result, clear old chat
-  const selectSubject = useCallback((newSubject, newDocId) => {
+  const selectSubject = useCallback((newSubject, newDocId = null) => {
     setSelectedSubject(newSubject)
     setSelectedDocId(prev => {
-      if (prev === newDocId) return prev
+      const cleanId = newDocId || null
+      if (prev === cleanId) return prev
       // On PDF change: clear old chat and start a new chat for the new document
       setMessages([])
       setError('')
       setQuestion('')
-      return newDocId
+      return cleanId
     })
   }, [])
 
-  // Auto-initialize document ONLY if none is currently selected
+  // Auto-initialize or sync document ID
   const initDocumentIfNone = useCallback((fallbackDocId) => {
     setSelectedDocId(prev => {
-      if (!prev && fallbackDocId) {
-        return fallbackDocId
-      }
-      return prev
+      const cleanId = fallbackDocId || null
+      if (prev === cleanId) return prev
+      return cleanId
     })
   }, [])
 
   // Submit question using RAG
   const askQuestion = useCallback(async (userQuestion, currentDocument) => {
-    if (!selectedDocId || !userQuestion.trim() || loading) return
+    const targetDocId = currentDocument?.documentId || selectedDocId
+    if (!targetDocId || !userQuestion.trim() || loading) return
+
+    // Ensure selectedDocId matches the active validated document
+    if (selectedDocId !== targetDocId) {
+      setSelectedDocId(targetDocId)
+    }
 
     const trimmedQuestion = userQuestion.trim()
     setError('')
@@ -117,8 +152,8 @@ export function ChatProvider({ children }) {
 
     try {
       const response = await askAiQuestion({
-        documentId: selectedDocId,
-        subjectId: selectedSubject,
+        documentId: targetDocId,
+        subjectId: currentDocument?.subjectId || selectedSubject,
         question: trimmedQuestion
       })
 
@@ -128,7 +163,7 @@ export function ChatProvider({ children }) {
           role: 'assistant',
           text: response.answer || response.reply || 'No answer generated.',
           documentName: response.documentName || currentDocument?.filename,
-          documentId: response.documentId || selectedDocId,
+          documentId: response.documentId || targetDocId,
           subjectId: response.subjectId || selectedSubject,
           sources: response.sources || []
         }
@@ -143,7 +178,7 @@ export function ChatProvider({ children }) {
   // Clear all chat state on logout or explicit reset
   const clearChat = useCallback(() => {
     setMessages([])
-    setSelectedDocId('')
+    setSelectedDocId(null)
     setSelectedSubject(studentSubjects[0] || 'DSP — Digital Signal Processing')
     setLoading(false)
     setError('')
@@ -157,6 +192,7 @@ export function ChatProvider({ children }) {
   const value = {
     notes,
     backendSubjects,
+    notesLoaded,
     fetchNotes,
     selectedSubject,
     setSelectedSubject,

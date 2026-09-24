@@ -23,42 +23,47 @@ export async function getDocumentEmbeddingMetadata(documentId) {
 
   const docIdFilter = { $in: [docObjectId, docObjectId.toString()] }
 
-  // 1. Inspect existing stored chunk
+  // 1. Check AiDocument record
+  const aiDoc = await AiDocument.findById(docObjectId).lean()
+  if (aiDoc && (aiDoc.embeddingProvider || aiDoc.embeddingModel || aiDoc.embeddingDimensions)) {
+    return {
+      embeddingProvider: aiDoc.embeddingProvider || null,
+      embeddingModel: aiDoc.embeddingModel || null,
+      dimensions: aiDoc.embeddingDimensions || null
+    }
+  }
+
+  // 2. Check Note record
+  const note = await Note.findById(docObjectId).lean()
+  if (note && (note.embeddingProvider || note.embeddingModel || note.embeddingDimensions)) {
+    return {
+      embeddingProvider: note.embeddingProvider || null,
+      embeddingModel: note.embeddingModel || null,
+      dimensions: note.embeddingDimensions || null
+    }
+  }
+
+  // 3. Inspect existing stored chunk
   const sampleChunk = await AiChunk.findOne({
     documentId: docIdFilter,
     embedding: { $exists: true, $ne: null, $not: { $size: 0 } }
   }).lean()
 
-  if (sampleChunk && Array.isArray(sampleChunk.embedding) && sampleChunk.embedding.length > 0) {
-    const vectorLength = sampleChunk.embedding.length
-    const provider = sampleChunk.embeddingProvider || 'ollama'
-    const model = sampleChunk.embeddingModel || (vectorLength === 768 ? 'nomic-embed-text' : (vectorLength === 1536 ? 'text-embedding-3-small' : 'unknown'))
-    const dimensions = sampleChunk.dimensions || vectorLength
-
-    return {
-      embeddingProvider: provider,
-      embeddingModel: model,
-      dimensions
+  if (sampleChunk) {
+    if (sampleChunk.embeddingProvider || sampleChunk.embeddingModel || sampleChunk.dimensions) {
+      return {
+        embeddingProvider: sampleChunk.embeddingProvider || null,
+        embeddingModel: sampleChunk.embeddingModel || null,
+        dimensions: sampleChunk.dimensions || (Array.isArray(sampleChunk.embedding) ? sampleChunk.embedding.length : null)
+      }
     }
-  }
-
-  // 2. Check AiDocument record
-  const aiDoc = await AiDocument.findById(docObjectId).lean()
-  if (aiDoc && aiDoc.embeddingProvider && aiDoc.embeddingModel) {
-    return {
-      embeddingProvider: aiDoc.embeddingProvider,
-      embeddingModel: aiDoc.embeddingModel,
-      dimensions: aiDoc.embeddingDimensions || 768
-    }
-  }
-
-  // 3. Check Note record
-  const note = await Note.findById(docObjectId).lean()
-  if (note && note.embeddingProvider && note.embeddingModel) {
-    return {
-      embeddingProvider: note.embeddingProvider,
-      embeddingModel: note.embeddingModel,
-      dimensions: note.embeddingDimensions || 768
+    // Old chunk without explicit metadata fields
+    if (Array.isArray(sampleChunk.embedding) && sampleChunk.embedding.length > 0) {
+      return {
+        embeddingProvider: null,
+        embeddingModel: null,
+        dimensions: sampleChunk.embedding.length
+      }
     }
   }
 
@@ -66,9 +71,11 @@ export async function getDocumentEmbeddingMetadata(documentId) {
 }
 
 /**
- * Validates that the active query embedding provider and model are compatible with
- * the document's stored embeddings. Prevents comparing vectors across different
- * models or dimensions.
+ * Validates that the selected document's embedding configuration matches the active
+ * embedding configuration (provider, model, dimensions) before vector search.
+ *
+ * If they match: continues unchanged.
+ * If they don't match: stops and throws a clear "document must be re-indexed" error.
  *
  * @param {Object} params
  * @param {Object|null} params.docMetadata
@@ -76,28 +83,31 @@ export async function getDocumentEmbeddingMetadata(documentId) {
  * @param {string} [params.documentName]
  */
 export function verifyEmbeddingCompatibility({ docMetadata, queryProvider, documentName = 'Selected document' }) {
-  if (!docMetadata) return
+  const activeProvider = queryProvider?.provider || queryProvider?.name
+  const activeModel = queryProvider?.model
+  const activeDimensions = queryProvider?.dimensions
 
-  // Check dimension mismatch
-  if (docMetadata.dimensions && queryProvider.dimensions && docMetadata.dimensions !== queryProvider.dimensions) {
+  const docProvider = docMetadata?.embeddingProvider
+  const docModel = docMetadata?.embeddingModel
+  const docDimensions = docMetadata?.dimensions || docMetadata?.embeddingDimensions
+
+  const isMatch = Boolean(
+    docMetadata &&
+    docProvider === activeProvider &&
+    docModel === activeModel &&
+    Number(docDimensions) === Number(activeDimensions)
+  )
+
+  if (!isMatch) {
+    const docDesc = `${docProvider || 'unknown'} / ${docModel || 'unknown'} / ${docDimensions || 'unknown'}`
+    const activeDesc = `${activeProvider || 'unknown'} / ${activeModel || 'unknown'} / ${activeDimensions || 'unknown'}`
+
     const error = new Error(
-      `Incompatible embedding dimensions: Document "${documentName}" was indexed with ${docMetadata.embeddingProvider} (${docMetadata.embeddingModel}, ${docMetadata.dimensions} dims), which cannot be queried with ${queryProvider.name} (${queryProvider.model}, ${queryProvider.dimensions} dims).`
+      `Incompatible embedding configuration: document must be re-indexed. ` +
+      `Document = ${docDesc}, Current = ${activeDesc}`
     )
     error.status = 400
-    error.code = 'EMBEDDING_DIMENSION_MISMATCH'
-    throw error
-  }
-
-  // Check model/provider mismatch
-  if (
-    docMetadata.embeddingProvider !== queryProvider.name ||
-    docMetadata.embeddingModel !== queryProvider.model
-  ) {
-    const error = new Error(
-      `Incompatible embedding provider/model: Document "${documentName}" was indexed with ${docMetadata.embeddingProvider} (${docMetadata.embeddingModel}), which cannot be mixed with query provider ${queryProvider.name} (${queryProvider.model}).`
-    )
-    error.status = 400
-    error.code = 'EMBEDDING_PROVIDER_MISMATCH'
+    error.code = 'DOCUMENT_REINDEX_REQUIRED'
     throw error
   }
 }

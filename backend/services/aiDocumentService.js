@@ -1,4 +1,6 @@
 import fs from 'fs/promises'
+import path from 'path'
+import mongoose from 'mongoose'
 import Note from '../models/Note.js'
 import AiDocument from '../models/AiDocument.js'
 import AiPage from '../models/AiPage.js'
@@ -70,10 +72,18 @@ export async function createAiDocument(file, userId, subjectId = 'General') {
       filePath: file.path
     })
 
+    const embeddingProvider = getEmbeddingProvider()
+    const providerName = embeddingProvider.provider || embeddingProvider.name
+    const modelName = embeddingProvider.model
+    const dimensions = embeddingProvider.dimensions
+
     // Step 7 — mark document ready
-    document.status     = 'ready'
-    document.pageCount  = pageCount
-    document.chunkCount = chunkCount
+    document.status              = 'ready'
+    document.pageCount           = pageCount
+    document.chunkCount          = chunkCount
+    document.embeddingProvider   = providerName
+    document.embeddingModel      = modelName
+    document.embeddingDimensions = dimensions
     await document.save()
   } catch (error) {
     console.error(`[PDF Processing Error] Failed to process document ${document._id}:`, error.message)
@@ -102,10 +112,15 @@ export async function createAiDocument(file, userId, subjectId = 'General') {
  * @returns {Promise<{ pageCount: number, chunkCount: number, embeddingsCount: number }>}
  */
 export async function indexPdfFileForDocument({ documentId, filePath }) {
-  // Clear any pre-existing chunks or pages for this documentId
+  const docObjectId = mongoose.Types.ObjectId.isValid(documentId)
+    ? new mongoose.Types.ObjectId(documentId)
+    : documentId
+  const docIdFilter = { $in: [docObjectId, docObjectId.toString()] }
+
+  // 1. Removes only that document's old vectors and pages
   await Promise.all([
-    AiPage.deleteMany({ documentId }),
-    AiChunk.deleteMany({ documentId })
+    AiPage.deleteMany({ documentId: docIdFilter }),
+    AiChunk.deleteMany({ documentId: docIdFilter })
   ])
 
   // Extract text and store pages
@@ -114,7 +129,7 @@ export async function indexPdfFileForDocument({ documentId, filePath }) {
   if (pages.length > 0) {
     await AiPage.insertMany(
       pages.map(page => ({
-        documentId,
+        documentId: docObjectId,
         pageNumber: page.pageNumber,
         text:       page.text,
         charCount:  page.text.length
@@ -127,7 +142,7 @@ export async function indexPdfFileForDocument({ documentId, filePath }) {
   if (chunks.length > 0) {
     await AiChunk.insertMany(
       chunks.map(chunk => ({
-        documentId,
+        documentId: docObjectId,
         chunkIndex: chunk.chunkIndex,
         pageNumber: chunk.pageNumber,
         text:       chunk.text,
@@ -139,55 +154,65 @@ export async function indexPdfFileForDocument({ documentId, filePath }) {
   console.log(`PDF processed for ${documentId}\nPages: ${pages.length}\nChunks: ${chunks.length}`)
 
   // Get stored chunks and generate embeddings
-  const storedChunks = await AiChunk.find({ documentId }).sort('chunkIndex')
+  const storedChunks = await AiChunk.find({ documentId: docIdFilter }).sort('chunkIndex')
   let embeddingsGeneratedCount = 0
+
+  // 3. Uses the current embedding provider
   const embeddingProvider = getEmbeddingProvider()
-  const providerName = embeddingProvider.name
+  const providerName = embeddingProvider.provider || embeddingProvider.name
   const modelName = embeddingProvider.model
   const dimensions = embeddingProvider.dimensions
 
-  if (storedChunks.length > 0) {
-    const textsToEmbed = storedChunks.map(c => c.text)
-    const embeddings = await generateEmbeddings(textsToEmbed)
-    embeddingsGeneratedCount = embeddings.length
+  if (storedChunks.length === 0) {
+    const error = new Error('No text chunks could be extracted from the PDF to generate embeddings.')
+    error.status = 400
+    throw error
+  }
 
-    // Save embeddings and provider metadata back to chunks
-    const bulkOps = storedChunks.map((chunk, index) => ({
-      updateOne: {
-        filter: { _id: chunk._id },
-        update: {
-          $set: {
-            embedding: embeddings[index],
-            embeddingProvider: providerName,
-            embeddingModel: modelName,
-            dimensions: embeddings[index]?.length || dimensions
-          }
+  const textsToEmbed = storedChunks.map(c => c.text)
+  const embeddings = await generateEmbeddings(textsToEmbed)
+  embeddingsGeneratedCount = embeddings.length
+
+  // 4. Stores the new provider/model/dimensions on chunks
+  const bulkOps = storedChunks.map((chunk, index) => ({
+    updateOne: {
+      filter: { _id: chunk._id },
+      update: {
+        $set: {
+          embedding: embeddings[index],
+          embeddingProvider: providerName,
+          embeddingModel: modelName,
+          dimensions: embeddings[index]?.length || dimensions
         }
       }
-    }))
-
-    if (bulkOps.length > 0) {
-      await AiChunk.bulkWrite(bulkOps)
     }
+  }))
 
-    // Save embedding metadata on AiDocument and Note
-    await Promise.all([
-      AiDocument.findByIdAndUpdate(documentId, {
-        $set: {
-          embeddingProvider: providerName,
-          embeddingModel: modelName,
-          embeddingDimensions: dimensions
-        }
-      }),
-      Note.findByIdAndUpdate(documentId, {
-        $set: {
-          embeddingProvider: providerName,
-          embeddingModel: modelName,
-          embeddingDimensions: dimensions
-        }
-      })
-    ]).catch(() => {})
+  if (bulkOps.length > 0) {
+    await AiChunk.bulkWrite(bulkOps)
   }
+
+  // 4 & 5. Stores new provider/model/dimensions and marks indexing successful ONLY after completion
+  await Promise.all([
+    AiDocument.findByIdAndUpdate(docObjectId, {
+      $set: {
+        status: 'ready',
+        pageCount: pages.length,
+        chunkCount: storedChunks.length,
+        embeddingProvider: providerName,
+        embeddingModel: modelName,
+        embeddingDimensions: dimensions,
+        extractionError: undefined
+      }
+    }),
+    Note.findByIdAndUpdate(docObjectId, {
+      $set: {
+        embeddingProvider: providerName,
+        embeddingModel: modelName,
+        embeddingDimensions: dimensions
+      }
+    })
+  ]).catch(() => {})
 
   console.log(`Chunks: ${storedChunks.length}\nEmbeddings generated: ${embeddingsGeneratedCount} (${providerName}/${modelName})`)
 
@@ -209,5 +234,106 @@ export const publicDocument = document => ({
   uploadedAt: document.createdAt,
   status:     document.status,
   pageCount:  document.pageCount ?? 0,
-  chunkCount: document.chunkCount ?? 0
+  chunkCount: document.chunkCount ?? 0,
+  ...(document.embeddingProvider ? {
+    embeddingProvider: document.embeddingProvider,
+    embeddingModel: document.embeddingModel,
+    embeddingDimensions: document.embeddingDimensions
+  } : {})
 })
+
+/**
+ * Explicitly re-indexes an existing document (AiDocument or Note) using the current active embedding configuration.
+ *
+ * @param {string|mongoose.Types.ObjectId} documentId
+ * @returns {Promise<{ documentId: string, status?: string, pageCount: number, chunkCount: number, embeddingsCount: number, embeddingProvider: string, embeddingModel: string, embeddingDimensions: number }>}
+ */
+export async function reindexAiDocument(documentId) {
+  const docObjectId = mongoose.Types.ObjectId.isValid(documentId)
+    ? new mongoose.Types.ObjectId(documentId)
+    : documentId
+
+  // 1. Check AiDocument
+  const aiDoc = await AiDocument.findById(docObjectId)
+  if (aiDoc) {
+    const storageDirectory = path.resolve(process.cwd(), process.env.AI_DOCUMENT_STORAGE_DIR || 'storage/ai-documents')
+    const filePath = path.join(storageDirectory, aiDoc.storageKey)
+    try {
+      await fs.access(filePath)
+    } catch {
+      const err = new Error(`PDF file not found for document "${aiDoc.originalName}".`)
+      err.status = 404
+      throw err
+    }
+
+    aiDoc.status = 'processing'
+    await aiDoc.save()
+
+    try {
+      const stats = await indexPdfFileForDocument({ documentId: aiDoc._id, filePath })
+      const provider = getEmbeddingProvider()
+      const providerName = provider.provider || provider.name
+      const modelName = provider.model
+      const dimensions = provider.dimensions
+
+      aiDoc.status = 'ready'
+      aiDoc.pageCount = stats.pageCount
+      aiDoc.chunkCount = stats.chunkCount
+      aiDoc.embeddingProvider = providerName
+      aiDoc.embeddingModel = modelName
+      aiDoc.embeddingDimensions = dimensions
+      aiDoc.extractionError = undefined
+      await aiDoc.save()
+
+      return {
+        documentId: aiDoc._id,
+        status: 'ready',
+        ...stats,
+        embeddingProvider: providerName,
+        embeddingModel: modelName,
+        embeddingDimensions: dimensions
+      }
+    } catch (err) {
+      aiDoc.status = 'failed'
+      aiDoc.extractionError = err.message
+      await aiDoc.save().catch(() => {})
+      throw err
+    }
+  }
+
+  // 2. Check Note
+  const note = await Note.findById(docObjectId)
+  if (note && note.fileUrl) {
+    const filePath = path.resolve(process.cwd(), 'uploads', path.basename(note.fileUrl))
+    try {
+      await fs.access(filePath)
+    } catch {
+      const err = new Error(`PDF file not found for note "${note.title}".`)
+      err.status = 404
+      throw err
+    }
+
+    const stats = await indexPdfFileForDocument({ documentId: note._id, filePath })
+    const provider = getEmbeddingProvider()
+    const providerName = provider.provider || provider.name
+    const modelName = provider.model
+    const dimensions = provider.dimensions
+
+    note.embeddingProvider = providerName
+    note.embeddingModel = modelName
+    note.embeddingDimensions = dimensions
+    await note.save()
+
+    return {
+      documentId: note._id,
+      ...stats,
+      embeddingProvider: providerName,
+      embeddingModel: modelName,
+      embeddingDimensions: dimensions
+    }
+  }
+
+  const err = new Error('Document not found.')
+  err.status = 404
+  throw err
+}

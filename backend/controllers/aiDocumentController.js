@@ -4,7 +4,7 @@ import Note from '../models/Note.js'
 import AiDocument from '../models/AiDocument.js'
 import AiPage from '../models/AiPage.js'
 import AiChunk from '../models/AiChunk.js'
-import { createAiDocument, publicDocument } from '../services/aiDocumentService.js'
+import { createAiDocument, publicDocument, reindexAiDocument } from '../services/aiDocumentService.js'
 import { searchSimilarChunks } from '../services/vectorSearchService.js'
 
 /**
@@ -144,6 +144,28 @@ export async function getAiDocumentFile(req, res, next) {
     res.setHeader('Content-Type', 'application/pdf')
     res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(document.originalName)}"`)
     res.sendFile(filePath)
+  } catch (error) {
+    next(error)
+  }
+}
+
+/**
+ * Explicitly re-indexes an existing document using the current active embedding configuration.
+ * Route: POST /api/ai/documents/:id/reindex or POST /api/ai/documents/reindex
+ */
+export async function reindexDocument(req, res, next) {
+  try {
+    const documentId = req.params.id || req.body.documentId
+    if (!documentId) {
+      return res.status(400).json({ success: false, message: 'documentId is required.' })
+    }
+
+    const result = await reindexAiDocument(documentId)
+    res.json({
+      success: true,
+      message: 'Document re-indexed successfully.',
+      ...result
+    })
   } catch (error) {
     next(error)
   }

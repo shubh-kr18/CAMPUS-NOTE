@@ -8,7 +8,8 @@ import {
   listAiDocuments,
   deleteAiDocument,
   searchDocumentChunks,
-  getAiDocumentFile
+  getAiDocumentFile,
+  reindexDocument
 } from '../controllers/aiDocumentController.js'
 import { protect } from '../middleware/authMiddleware.js'
 
@@ -42,6 +43,10 @@ router.post('/', protect, upload.single('file'), uploadAiDocument)
 
 // Delete an indexed PDF document
 router.delete('/:id', protect, deleteAiDocument)
+
+// Explicitly re-index an existing document using current embedding configuration
+router.post('/:id/reindex', protect, reindexDocument)
+router.post('/reindex', protect, reindexDocument)
 
 // Semantic vector search test/debug endpoints
 router.post('/search', protect, searchDocumentChunks)

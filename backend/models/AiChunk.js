@@ -34,16 +34,13 @@ const aiChunkSchema = new mongoose.Schema({
   },
   embeddingProvider: {
     type: String,
-    default: 'ollama',
     index: true
   },
   embeddingModel: {
-    type: String,
-    default: 'nomic-embed-text'
+    type: String
   },
   dimensions: {
-    type: Number,
-    default: 768
+    type: Number
   }
 }, { timestamps: false })
 
