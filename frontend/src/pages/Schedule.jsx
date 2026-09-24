@@ -37,10 +37,21 @@ export const RECURRING_CLASSES_START_ISO = '2026-07-06'
 export const RECURRING_CLASSES_END_ISO = '2026-10-23'
 
 function formatIsoDate(d) {
-  const year = d.getFullYear()
-  const month = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
+  if (!d) return ''
+  if (typeof d === 'string') return d.split('T')[0]
+  if (d instanceof Date && !isNaN(d.getTime())) {
+    if (d.getUTCHours() === 0 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0 && d.getUTCMilliseconds() === 0 && d.getTimezoneOffset() !== 0) {
+      const year = d.getUTCFullYear()
+      const month = String(d.getUTCMonth() + 1).padStart(2, '0')
+      const day = String(d.getUTCDate()).padStart(2, '0')
+      return `${year}-${month}-${day}`
+    }
+    const year = d.getFullYear()
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+  return ''
 }
 
 function parseTimeToMinutes(t) {
@@ -294,7 +305,7 @@ export default function Schedule() {
       code: '',
       teacher: '',
       room: '',
-      day: defaultDay || DAYS_ORDER[selectedDate.getDay()] || 'Monday',
+      day: defaultDay || dayName || 'Monday',
       startTime: '09:00',
       endTime: '09:55',
       isLab: false,
@@ -553,22 +564,20 @@ export default function Schedule() {
   }, [formattedSelectedIso])
 
   const friendlyDateString = useMemo(() => {
-    return selectedDate.toLocaleDateString('en-US', {
+    if (!formattedSelectedIso) return ''
+    const [y, m, d] = formattedSelectedIso.split('-').map(Number)
+    return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-US', {
       weekday: 'long',
       month: 'short',
       day: 'numeric',
-      year: 'numeric'
+      year: 'numeric',
+      timeZone: 'UTC'
     })
-  }, [selectedDate])
+  }, [formattedSelectedIso])
 
   const isToday = useMemo(() => {
-    const today = new Date()
-    return (
-      selectedDate.getDate() === today.getDate() &&
-      selectedDate.getMonth() === today.getMonth() &&
-      selectedDate.getFullYear() === today.getFullYear()
-    )
-  }, [selectedDate])
+    return formattedSelectedIso === formatIsoDate(new Date())
+  }, [formattedSelectedIso])
 
   const isWeekend = useMemo(() => {
     const [y, m, d] = formattedSelectedIso.split('-').map(Number)
@@ -720,7 +729,9 @@ export default function Schedule() {
   const effectiveDayClasses = useMemo(() => {
     if (!isWithinTeachingPeriod || classAffectingOverride) return []
 
-    const forDay = recurringClasses.filter((c) => c.day === dayName)
+    const forDay = recurringClasses.filter(
+      (c) => (c.day || '').trim().toLowerCase() === (dayName || '').trim().toLowerCase()
+    )
 
     // Filter out any individual class that has a targeted class-level override
     const uncancelledClasses = forDay.filter((c) => {
@@ -830,7 +841,9 @@ export default function Schedule() {
 
       let effectiveClasses = []
       if (dayIsWithinTeaching && !dayClassAffectingOverride) {
-        const dayClasses = recurringClasses.filter((c) => c.day === dayItem.dayName)
+        const dayClasses = recurringClasses.filter(
+          (c) => (c.day || '').trim().toLowerCase() === (dayItem.dayName || '').trim().toLowerCase()
+        )
 
         // Filter out any individual class that has a targeted class-level override
         const uncancelledDayClasses = dayClasses.filter((c) => {
