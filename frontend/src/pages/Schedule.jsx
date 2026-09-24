@@ -673,8 +673,8 @@ export default function Schedule() {
   // Active academic reminders for this date
   const activeReminders = useMemo(() => {
     return reminders.filter((r) => {
-      const start = (r.startDate || r.date || '').split('T')[0]
-      const end = (r.endDate || r.startDate || r.date || '').split('T')[0]
+      const start = formatIsoDate(r.startDate || r.date)
+      const end = formatIsoDate(r.endDate || r.startDate || r.date)
       return Boolean(start) && formattedSelectedIso >= start && formattedSelectedIso <= end
     })
   }, [reminders, formattedSelectedIso])
@@ -684,13 +684,14 @@ export default function Schedule() {
     return overrides.find((o) => {
       if (!o.affectsClasses || o.affectsClasses === 'false') return false
       // Only match overrides applicable to this cohort
-      if (o.branch && o.branch !== 'All' && o.branch !== 'ECE') return false
-      if (o.semester && o.semester !== 5) return false
+      const normBranch = (o.branch || 'All').trim().toLowerCase()
+      if (normBranch !== 'all' && normBranch !== 'ece') return false
+      if (o.semester && Number(o.semester) !== 5) return false
       // Single class-level override does not suspend the full day
       if (o.classId) return false
 
-      const startDate = (o.startDate || o.date || '').split('T')[0]
-      const endDate = (o.endDate || o.startDate || o.date || '').split('T')[0]
+      const startDate = formatIsoDate(o.startDate || o.date)
+      const endDate = formatIsoDate(o.endDate || o.startDate || o.date)
       return Boolean(startDate) && formattedSelectedIso >= startDate && formattedSelectedIso <= endDate
     })
   }, [overrides, formattedSelectedIso])
@@ -699,8 +700,8 @@ export default function Schedule() {
   const applicableSemesterEvents = useMemo(() => {
     const list = []
     overrides.forEach((o) => {
-      const start = (o.startDate || o.date || '').split('T')[0]
-      const end = (o.endDate || o.startDate || o.date || '').split('T')[0]
+      const start = formatIsoDate(o.startDate || o.date)
+      const end = formatIsoDate(o.endDate || o.startDate || o.date)
       if (Boolean(start) && formattedSelectedIso >= start && formattedSelectedIso <= end) {
         list.push({
           ...o,
@@ -710,8 +711,8 @@ export default function Schedule() {
       }
     })
     reminders.forEach((r) => {
-      const start = (r.startDate || r.date || '').split('T')[0]
-      const end = (r.endDate || r.startDate || r.date || '').split('T')[0]
+      const start = formatIsoDate(r.startDate || r.date)
+      const end = formatIsoDate(r.endDate || r.startDate || r.date)
       if (Boolean(start) && formattedSelectedIso >= start && formattedSelectedIso <= end) {
         list.push({
           ...r,
@@ -737,9 +738,10 @@ export default function Schedule() {
     const uncancelledClasses = forDay.filter((c) => {
       const isClassCancelled = overrides.some((o) => {
         if (!o.affectsClasses || o.affectsClasses === 'false') return false
-        if (!o.classId || String(o.classId) !== String(c._id)) return false
-        const startDate = (o.startDate || o.date || '').split('T')[0]
-        const endDate = (o.endDate || o.startDate || o.date || '').split('T')[0]
+        const targetClassId = o.classId?._id ? String(o.classId._id) : (o.classId ? String(o.classId) : '')
+        if (!targetClassId || targetClassId !== String(c._id)) return false
+        const startDate = formatIsoDate(o.startDate || o.date)
+        const endDate = formatIsoDate(o.endDate || o.startDate || o.date)
         return Boolean(startDate) && formattedSelectedIso >= startDate && formattedSelectedIso <= endDate
       })
       return !isClassCancelled
@@ -821,19 +823,20 @@ export default function Schedule() {
       const dayIso = dayItem.iso
       const dayClassAffectingOverride = overrides.find((o) => {
         if (!o.affectsClasses || o.affectsClasses === 'false') return false
-        if (o.branch && o.branch !== 'All' && o.branch !== 'ECE') return false
-        if (o.semester && o.semester !== 5) return false
+        const normBranch = (o.branch || 'All').trim().toLowerCase()
+        if (normBranch !== 'all' && normBranch !== 'ece') return false
+        if (o.semester && Number(o.semester) !== 5) return false
         if (o.classId) return false
 
-        const startDate = (o.startDate || o.date || '').split('T')[0]
-        const endDate = (o.endDate || o.startDate || o.date || '').split('T')[0]
+        const startDate = formatIsoDate(o.startDate || o.date)
+        const endDate = formatIsoDate(o.endDate || o.startDate || o.date)
         return Boolean(startDate) && dayIso >= startDate && dayIso <= endDate
       })
 
       // Academic reminders NEVER suppress recurring classes
       const dayReminders = reminders.filter((r) => {
-        const start = (r.startDate || r.date || '').split('T')[0]
-        const end = (r.endDate || r.startDate || r.date || '').split('T')[0]
+        const start = formatIsoDate(r.startDate || r.date)
+        const end = formatIsoDate(r.endDate || r.startDate || r.date)
         return Boolean(start) && dayIso >= start && dayIso <= end
       })
 
@@ -849,9 +852,10 @@ export default function Schedule() {
         const uncancelledDayClasses = dayClasses.filter((c) => {
           const isClassCancelled = overrides.some((o) => {
             if (!o.affectsClasses || o.affectsClasses === 'false') return false
-            if (!o.classId || String(o.classId) !== String(c._id)) return false
-            const startDate = (o.startDate || o.date || '').split('T')[0]
-            const endDate = (o.endDate || o.startDate || o.date || '').split('T')[0]
+            const targetClassId = o.classId?._id ? String(o.classId._id) : (o.classId ? String(o.classId) : '')
+            if (!targetClassId || targetClassId !== String(c._id)) return false
+            const startDate = formatIsoDate(o.startDate || o.date)
+            const endDate = formatIsoDate(o.endDate || o.startDate || o.date)
             return Boolean(startDate) && dayIso >= startDate && dayIso <= endDate
           })
           return !isClassCancelled
